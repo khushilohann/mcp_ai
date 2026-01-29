@@ -1,0 +1,4 @@
+id,name,email,region,signup_date
+1,Alice,alice@example.com,NA,2025-12-01
+2,Bob,bob@example.com,EU,2025-12-15
+3,Carol,carol@example.com,APAC,2026-01-10

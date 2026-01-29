@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+aiosqlite
+pandas
+openpyxl
+httpx
+cachetools
+ollama
+cachetools
+pytest
+pytest-asyncio
+httpx
