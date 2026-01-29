@@ -10,3 +10,4 @@ cachetools
 pytest
 pytest-asyncio
 httpx
+python-multipart

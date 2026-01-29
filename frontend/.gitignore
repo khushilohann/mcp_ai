@@ -1,0 +1,46 @@
+# Node modules
+node_modules/
+
+# Build output
+.next/
+out/
+dist/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env*
+
+# OS files
+.DS_Store
+
+# VSCode settings
+.vscode/
+
+# Coverage
+coverage/
+
+# Misc
+*.local
+*.swp
+
+# Next.js
+.next
+
+# Mac system files
+Icon?
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Test coverage
+coverage/
+
+# Storybook build outputs
+storybook-static/

@@ -1,0 +1,4 @@
+2026-01-29 17:59:36 | POST /chat | user=anonymous | query= body=b'{"query":"hii"}'
+2026-01-29 17:59:39 | POST /chat | user=anonymous | query= body=b'{"query":"sql"}'
+2026-01-29 17:59:42 | POST /chat | user=anonymous | query= body=b'{"query":"api"}'
+2026-01-29 17:59:49 | POST /chat | user=anonymous | query= body=b'{"query":"file"}'
