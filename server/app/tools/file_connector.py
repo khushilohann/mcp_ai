@@ -2,6 +2,7 @@ import os
 import csv
 import json
 import xml.etree.ElementTree as ET
+from io import BytesIO
 import pandas as pd
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from typing import List, Dict, Any, Optional

@@ -14,10 +14,11 @@ router = APIRouter()
 _CONNECTORS: Dict[str, APIConnector] = {}
 
 
-def get_connector(base_url: str, api_key: Optional[str] = None, cache_ttl: int = 60) -> APIConnector:
-    key = f"{base_url}::{api_key}"
+def get_connector(base_url: str, api_key: Optional[str] = None, oauth2_token: Optional[str] = None, cache_ttl: int = 60) -> APIConnector:
+    # Include oauth2_token in cache key to properly isolate connectors
+    key = f"{base_url}::{api_key}::{oauth2_token}"
     if key not in _CONNECTORS:
-        _CONNECTORS[key] = APIConnector(base_url=base_url, api_key=api_key, cache_ttl=cache_ttl)
+        _CONNECTORS[key] = APIConnector(base_url=base_url, api_key=api_key, oauth2_token=oauth2_token, cache_ttl=cache_ttl)
     return _CONNECTORS[key]
 
 
@@ -29,6 +30,7 @@ class QueryAPIRequest(BaseModel):
     use_cache: Optional[bool] = True
     base_url: Optional[str] = None
     api_key: Optional[str] = None
+    oauth2_token: Optional[str] = None  # OAuth2 Bearer token support
     cache_ttl: Optional[int] = 60
     invalidate_cache: Optional[bool] = False
 
@@ -37,26 +39,28 @@ class QueryAPIRequest(BaseModel):
 async def query_api(req: QueryAPIRequest):
     base_url = req.base_url or MOCK_API_URL
     api_key = req.api_key
+    oauth2_token = req.oauth2_token
 
-    connector = get_connector(base_url, api_key, cache_ttl=req.cache_ttl or 60)
+    # Create connector with OAuth2 support if provided (oauth2_token included in cache key)
+    connector = get_connector(base_url, api_key, oauth2_token=oauth2_token, cache_ttl=req.cache_ttl or 60)
 
     method = req.method.upper()
     try:
         if method == "GET":
-            result = await connector.get(req.path, params=req.params, use_cache=bool(req.use_cache))
+            result = await connector.get(req.path, params=req.params, use_cache=bool(req.use_cache), oauth2_token=oauth2_token)
             status = 200
         elif method == "POST":
-            result = await connector.post(req.path, json=req.json)
+            result = await connector.post(req.path, json=req.json, oauth2_token=oauth2_token)
             status = 201 if isinstance(result, dict) else 200
             if req.invalidate_cache:
                 connector.cache.clear()
         elif method == "PUT":
-            result = await connector.put(req.path, json=req.json)
+            result = await connector.put(req.path, json=req.json, oauth2_token=oauth2_token)
             status = 200
             if req.invalidate_cache:
                 connector.cache.clear()
         elif method == "DELETE":
-            result = await connector.delete(req.path)
+            result = await connector.delete(req.path, oauth2_token=oauth2_token)
             status = 200
             if req.invalidate_cache:
                 connector.cache.clear()

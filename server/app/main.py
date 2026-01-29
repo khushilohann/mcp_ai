@@ -1,7 +1,5 @@
 
 
-
-
 from fastapi import FastAPI, Request, HTTPException, Body
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -20,6 +18,8 @@ from app.tools.query_api import router as query_api_router
 from app.tools.file_connector import router as file_router
 from app.tools.auth import router as auth_router
 from app.tools.plugin_manager import router as plugin_router
+from app.tools.analyze_schema import router as analyze_schema_router
+from app.tools.data_quality import router as data_quality_router
 from app.core.logging import setup_logging, get_logger
 from app.core.ollama_client import ask_ollama
 from app.core.audit import audit_middleware_factory
@@ -54,6 +54,71 @@ import httpx
 from app.tools.query_data import query_data, QueryPayload
 from app.tools.query_api import query_api, QueryAPIRequest
 from app.db.explorer import list_tables
+from app.services.sql_engine import execute_sql
+
+
+def format_as_table(data, title=None):
+    """Format data (list of dicts or single dict) as a readable table."""
+    if not data:
+        return "No data available."
+    
+    # Handle single dict
+    if isinstance(data, dict) and not isinstance(data, list):
+        if "rows" in data:
+            data = data["rows"]
+        elif "data" in data:
+            data = data["data"]
+        else:
+            # Single dict - convert to list
+            data = [data]
+    
+    # Ensure it's a list
+    if not isinstance(data, list) or len(data) == 0:
+        return "No data available."
+    
+    # Get all unique keys from all rows
+    all_keys = set()
+    for row in data:
+        if isinstance(row, dict):
+            all_keys.update(row.keys())
+    
+    if not all_keys:
+        return "No data available."
+    
+    columns = sorted(all_keys)
+    
+    # Calculate column widths
+    col_widths = {}
+    for col in columns:
+        col_widths[col] = max(len(str(col)), max((len(str(row.get(col, ""))) for row in data if isinstance(row, dict)), default=0))
+        # Cap at reasonable width
+        col_widths[col] = min(col_widths[col], 30)
+    
+    # Build table
+    lines = []
+    if title:
+        lines.append(title)
+        lines.append("")
+    
+    # Header
+    header = " | ".join(str(col).ljust(col_widths[col]) for col in columns)
+    lines.append(header)
+    lines.append("-" * len(header))
+    
+    # Rows
+    for row in data[:100]:  # Limit to 100 rows for display
+        if isinstance(row, dict):
+            row_str = " | ".join(
+                str(row.get(col, "")).ljust(col_widths[col])[:col_widths[col]]
+                for col in columns
+            )
+            lines.append(row_str)
+    
+    if len(data) > 100:
+        lines.append(f"\n... and {len(data) - 100} more rows")
+    
+    return "\n".join(lines)
+
 
 # Integrate with DB, files, APIs, etc.
 async def get_chatbot_response(query: str) -> str:
@@ -70,40 +135,52 @@ async def get_chatbot_response(query: str) -> str:
             return f"API Error: {result.get('error', {}).get('message', 'Unknown error')}"
         data = result.get("data")
         if isinstance(data, dict) and data:
-            return f"API Data: {data}"
+            return format_as_table([data], "API Response:")
         elif isinstance(data, list) and data:
-            return f"API Data: {data[0]}"  # Show only the first item for brevity
+            return format_as_table(data, "API Response:")
         else:
             return "API call succeeded but returned no data."
-    elif "sql" in q or "database" in q or "user" in q:
-        # Example: call the /mcp/query_data endpoint
+    elif "sql" in q or "database" in q or "user" in q or "show" in q or "list" in q:
+        import re
+
+        # If the user explicitly asks for a specific user by name, do a targeted SQL query.
+        # This avoids returning "all users" and avoids missing the user due to auto-LIMIT pagination.
+        m = re.search(r"\buser\s*(?:with\s+name\s+)?([a-z0-9_]+)\b", q)
+        if m and ("with name" in q or "name" in q):
+            username = m.group(1).strip()
+            exec_result = await execute_sql(
+                "SELECT * FROM users WHERE lower(name) = lower(?)",
+                params=(username,),
+            )
+            if not exec_result.get("success"):
+                return f"SQL Error: {exec_result.get('error', 'Unknown error')}"
+            rows = exec_result.get("rows", [])
+            if rows:
+                return format_as_table(rows, f"User info for '{username}':")
+            return f"No user found with name '{username}'."
+
+        # Otherwise fall back to the NL->SQL tool
         payload = QueryPayload(question=query)
         result = await query_data(payload)
         if not result.get("success"):
             return f"SQL Error: {result.get('error', {}).get('message', 'Unknown error')}"
         rows = result.get("execution", {}).get("rows", [])
         if rows:
-            # Try to find a user by name if mentioned
-            import re
-            m = re.search(r"user(?: with name)? ([\w\d_]+)", q)
-            if m:
-                username = m.group(1)
-                filtered = [r for r in rows if str(r.get("name", "")).lower() == username.lower()]
-                if filtered:
-                    return f"User info: {filtered[0]}"
-            # If query contains 'all users', return all users
+            title = "Query Results:"
             if "all users" in q:
-                return f"All users: {rows}"
-            # Otherwise, just show the first row
-            return f"Result: {rows[0]}"
-        else:
-            return "No matching data found."
+                title = "All Users:"
+            elif "user" in q:
+                title = "User Results:"
+            return format_as_table(rows, title)
+        return "No matching data found."
     elif "file" in q or "csv" in q or "table" in q:
         # Example: list tables in the DB
         tables = await list_tables()
-        return f"Tables in DB: {tables}"
+        if tables:
+            return format_as_table([{"table": t} for t in tables], "Tables in Database:")
+        return "No tables found in the database."
     else:
-        return f"You asked: {query}\n(No matching handler found. Try mentioning 'api', 'sql', or 'file'.)"
+        return f"You asked: {query}\n(No matching handler found. Try mentioning 'api', 'sql', 'database', 'user', or 'table'.)"
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(chat_request: ChatRequest = Body(...)):
@@ -116,6 +193,8 @@ app.include_router(transform_router, prefix="/mcp")
 app.include_router(export_router, prefix="/mcp")
 app.include_router(query_api_router, prefix="/mcp")
 app.include_router(file_router, prefix="/mcp")
+app.include_router(analyze_schema_router, prefix="/mcp")
+app.include_router(data_quality_router, prefix="/mcp")
 app.include_router(auth_router, prefix="/auth")
 app.include_router(plugin_router, prefix="/plugins")
 
