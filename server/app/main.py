@@ -55,6 +55,7 @@ from app.tools.query_data import query_data, QueryPayload
 from app.tools.query_api import query_api, QueryAPIRequest
 from app.db.explorer import list_tables
 from app.services.sql_engine import execute_sql
+from app.services.unified_search import search_everywhere_users
 
 
 def format_as_table(data, title=None):
@@ -124,6 +125,27 @@ def format_as_table(data, title=None):
 async def get_chatbot_response(query: str) -> str:
     # Route based on keywords in the query
     q = query.lower()
+    # Unified search (users): supports id/email/name/region/signup_date with AND/OR,
+    # searches SQL + REST API + local files and returns a single merged table.
+    import re
+    looks_like_user_search = (
+        ("user" in q)
+        or ("email" in q)
+        or ("region" in q)
+        or ("signup" in q)
+        or ("signed up" in q)
+        or ("name" in q)
+        or (re.search(r"[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}", q) is not None)
+        or (re.search(r"\b(id\s*(?:=|is)?\s*\d+)\b", q) is not None)
+        or (re.search(r"\b(na|eu|apac|latam)\b", q) is not None)
+        or (re.search(r"\b\d{4}-\d{2}-\d{2}\b", q) is not None)
+    )
+
+    if looks_like_user_search and "table" not in q:
+        rows = await search_everywhere_users(query)
+        if rows:
+            return format_as_table(rows, "Search Results (SQL + API + Files):")
+        # fall through if no rows found
     if "api" in q:
         # Example user query: 'show me data from api path /users' or 'get user details from api path /users/20'
         import re

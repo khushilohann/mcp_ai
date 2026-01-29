@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS users (
   region TEXT,
   signup_date TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_users_name ON users(name);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_region ON users(region);
+CREATE INDEX IF NOT EXISTS idx_users_signup_date ON users(signup_date);
 CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
