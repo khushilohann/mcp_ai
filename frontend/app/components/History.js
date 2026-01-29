@@ -1,9 +1,10 @@
 "use client";
 import { useState, useEffect } from 'react';
 
-export default function History({ onSelect, onNewChat, currentChatId }) {
+export default function History({ onSelect, onNewChat, currentChatId, onDeleteChat }) {
   const [history, setHistory] = useState([]);
   const [collapsed, setCollapsed] = useState(false);
+  const [hoveredIndex, setHoveredIndex] = useState(null);
 
   useEffect(() => {
     loadHistory();
@@ -25,8 +26,26 @@ export default function History({ onSelect, onNewChat, currentChatId }) {
     }
   };
 
-  const handleSelect = (item, index) => {
+  const handleSelect = (item, index, e) => {
+    // Don't select if clicking delete button
+    if (e && e.target.closest('.delete-chat-btn')) {
+      return;
+    }
     if (onSelect) onSelect(item, index);
+  };
+
+  const handleDelete = (index, e) => {
+    e.stopPropagation();
+    if (window.confirm('Are you sure you want to delete this chat?')) {
+      const history = JSON.parse(localStorage.getItem('chat_history') || '[]');
+      history.splice(index, 1);
+      localStorage.setItem('chat_history', JSON.stringify(history));
+      setHistory(history);
+      window.dispatchEvent(new Event('storage'));
+      if (onDeleteChat) {
+        onDeleteChat(index);
+      }
+    }
   };
 
   const formatDate = (timestamp) => {
@@ -82,13 +101,24 @@ export default function History({ onSelect, onNewChat, currentChatId }) {
                   <li
                     key={item.index}
                     className={`history-item ${currentChatId === item.index ? 'active' : ''}`}
-                    onClick={() => handleSelect(item, item.index)}
+                    onClick={(e) => handleSelect(item, item.index, e)}
+                    onMouseEnter={() => setHoveredIndex(item.index)}
+                    onMouseLeave={() => setHoveredIndex(null)}
                     title={item.query}
                   >
                     <span className="history-item-icon">💬</span>
                     <span className="history-item-text">
                       {item.query.length > 30 ? `${item.query.slice(0, 30)}...` : item.query}
                     </span>
+                    {hoveredIndex === item.index && (
+                      <button
+                        className="delete-chat-btn"
+                        onClick={(e) => handleDelete(item.index, e)}
+                        title="Delete chat"
+                      >
+                        🗑️
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

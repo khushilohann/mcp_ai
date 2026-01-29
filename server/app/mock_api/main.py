@@ -35,23 +35,42 @@ class User(BaseModel):
     signup_date: Optional[str] = None  # YYYY-MM-DD
 
 
-def seed_users(count: int = 60):
-    """Seed a deterministic set of users so REST API has real searchable data."""
+def seed_users(count: int = 150):
+    """Seed a deterministic set of users so REST API has real searchable data.
+    Includes users matching database names (User1-User200) plus additional API-specific users.
+    """
     global _USERS, _NEXT_USER_ID
     _USERS.clear()
     _NEXT_USER_ID = 1
     regions = ["NA", "EU", "APAC", "LATAM"]
-    base = 1
-    for i in range(1, count + 1):
+    from datetime import datetime, timedelta
+    
+    base_date = datetime(2025, 1, 1)
+    
+    # First, add users matching database names (User1-User150)
+    for i in range(1, min(count, 151)):
         user = {
             "id": _NEXT_USER_ID,
-            "name": f"ApiUser{i}",
-            "email": f"apiuser{i}@example.com",
+            "name": f"User{i}",
+            "email": f"user{i}@example.com",
             "region": regions[i % len(regions)],
-            "signup_date": f"2025-06-{(base + i):02d}" if (base + i) <= 28 else "2025-07-01",
+            "signup_date": (base_date + timedelta(days=i)).strftime("%Y-%m-%d"),
         }
         _USERS[_NEXT_USER_ID] = user
         _NEXT_USER_ID += 1
+    
+    # Add some additional API-specific users with different naming
+    if count > 150:
+        for i in range(151, count + 1):
+            user = {
+                "id": _NEXT_USER_ID,
+                "name": f"ApiUser{i-150}",
+                "email": f"apiuser{i-150}@api.example.com",
+                "region": regions[(i-150) % len(regions)],
+                "signup_date": (base_date + timedelta(days=i)).strftime("%Y-%m-%d"),
+            }
+            _USERS[_NEXT_USER_ID] = user
+            _NEXT_USER_ID += 1
 
 
 seed_users()

@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 
-const Chat = forwardRef(function Chat({ chatId, onMessageSent }, ref) {
+const Chat = forwardRef(function Chat({ chatId, onMessageSent, currentChatId }, ref) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -9,6 +9,7 @@ const Chat = forwardRef(function Chat({ chatId, onMessageSent }, ref) {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const activeChatIdRef = useRef(null);
 
   useImperativeHandle(ref, () => ({
     setInput: (text) => {
@@ -63,14 +64,22 @@ const Chat = forwardRef(function Chat({ chatId, onMessageSent }, ref) {
   useEffect(() => {
     // Load chat history if chatId is provided
     if (chatId !== undefined && chatId !== null) {
+      activeChatIdRef.current = chatId;
       const history = JSON.parse(localStorage.getItem('chat_history') || '[]');
       if (history[chatId]) {
         const chat = history[chatId];
-        setMessages([
-          { role: 'user', content: chat.query },
-          { role: 'assistant', content: chat.response }
-        ]);
+        // Load all messages if available, otherwise just query/response
+        if (chat.messages && Array.isArray(chat.messages)) {
+          setMessages(chat.messages);
+        } else {
+          setMessages([
+            { role: 'user', content: chat.query },
+            { role: 'assistant', content: chat.response }
+          ]);
+        }
       }
+    } else {
+      activeChatIdRef.current = null;
     }
   }, [chatId]);
 
@@ -96,23 +105,53 @@ const Chat = forwardRef(function Chat({ chatId, onMessageSent }, ref) {
       
       const data = await res.json();
       const assistantMessage = { role: 'assistant', content: data.response };
-      setMessages((msgs) => [...msgs, assistantMessage]);
+      const updatedMessages = [...messages, userMessage, assistantMessage];
+      setMessages(updatedMessages);
       
-      // Save to history
+      // Update history - if we're in an active chat, update it; otherwise create new
       const history = JSON.parse(localStorage.getItem('chat_history') || '[]');
-      history.unshift({ 
-        query: userInput, 
-        response: data.response, 
-        ts: Date.now(),
-        messages: [userMessage, assistantMessage]
-      });
+      const currentId = activeChatIdRef.current !== null ? activeChatIdRef.current : currentChatId;
+      
+      if (currentId !== null && currentId >= 0 && currentId < history.length) {
+        // Update existing chat - keep the first query/response for display, but store full message history
+        const existingChat = history[currentId];
+        const firstQuery = existingChat.messages && existingChat.messages.length > 0 
+          ? existingChat.messages.find(m => m.role === 'user')?.content || existingChat.query
+          : existingChat.query;
+        const firstResponse = existingChat.messages && existingChat.messages.length > 0
+          ? existingChat.messages.find(m => m.role === 'assistant')?.content || existingChat.response
+          : existingChat.response;
+        
+        history[currentId] = {
+          query: firstQuery, // Keep first query for display
+          response: firstResponse, // Keep first response for display
+          ts: Date.now(), // Update timestamp
+          messages: updatedMessages // Store full message history
+        };
+        activeChatIdRef.current = currentId;
+      } else {
+        // Create new chat entry
+        history.unshift({ 
+          query: userInput, 
+          response: data.response, 
+          ts: Date.now(),
+          messages: updatedMessages
+        });
+        // Update active chat ID to the new entry (index 0)
+        activeChatIdRef.current = 0;
+        // Notify parent to update currentChatId
+        if (onMessageSent) {
+          onMessageSent({ query: userInput, response: data.response, chatId: 0, isNewChat: true });
+        }
+      }
+      
       localStorage.setItem('chat_history', JSON.stringify(history.slice(0, 50)));
       
       // Trigger history update in parent
       window.dispatchEvent(new Event('storage'));
       
-      if (onMessageSent) {
-        onMessageSent({ query: userInput, response: data.response });
+      if (onMessageSent && currentId !== null && currentId >= 0 && currentId < history.length) {
+        onMessageSent({ query: userInput, response: data.response, chatId: currentId, isNewChat: false });
       }
     } catch (err) {
       setMessages((msgs) => [

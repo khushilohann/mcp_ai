@@ -11,11 +11,13 @@ export default function Home() {
   const handleHistorySelect = (item, index) => {
     setCurrentChatId(index);
     if (chatRef.current && chatRef.current.loadChat) {
-      // Load the chat messages
-      const messages = [
-        { role: 'user', content: item.query },
-        { role: 'assistant', content: item.response }
-      ];
+      // Load the chat messages - use full message history if available
+      const messages = item.messages && Array.isArray(item.messages) 
+        ? item.messages 
+        : [
+            { role: 'user', content: item.query },
+            { role: 'assistant', content: item.response }
+          ];
       chatRef.current.loadChat(messages);
     }
   };
@@ -27,15 +29,36 @@ export default function Home() {
     }
   };
 
+  const handleMessageSent = (data) => {
+    // If it's a new chat, update currentChatId
+    if (data.isNewChat) {
+      setCurrentChatId(data.chatId);
+    }
+  };
+
+  const handleDeleteChat = (deletedIndex) => {
+    // If deleted chat was the current one, clear it
+    if (deletedIndex === currentChatId) {
+      setCurrentChatId(null);
+      if (chatRef.current && chatRef.current.clearChat) {
+        chatRef.current.clearChat();
+      }
+    } else if (deletedIndex < currentChatId) {
+      // If a chat before current was deleted, adjust the current chat ID
+      setCurrentChatId(currentChatId - 1);
+    }
+  };
+
   return (
     <main className="main-container">
       <History 
         onSelect={handleHistorySelect} 
         onNewChat={handleNewChat}
         currentChatId={currentChatId}
+        onDeleteChat={handleDeleteChat}
       />
       <div className="chat-wrapper">
-        <Chat ref={chatRef} chatId={currentChatId} />
+        <Chat ref={chatRef} chatId={currentChatId} currentChatId={currentChatId} onMessageSent={handleMessageSent} />
       </div>
     </main>
   );
