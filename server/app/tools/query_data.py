@@ -18,7 +18,7 @@ async def query_data(payload: QueryPayload):
         raise HTTPException(status_code=400, detail="`question` is required")
 
     prompt = f"""
-Convert this question into SQL:
+Convert this question into SQL. IMPORTANT: Do NOT add LIMIT clause unless explicitly requested.
 Question: {question}
 Return only SQL.
 """
